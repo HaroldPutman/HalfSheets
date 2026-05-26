@@ -7,6 +7,10 @@ struct PageSplitPreview: View {
     let pageNumber: Int
     @Binding var splitRatioFromTop: CGFloat
 
+    @State private var dragRatio: CGFloat?
+
+    private var displayRatio: CGFloat { dragRatio ?? splitRatioFromTop }
+
     private var pageAspect: CGFloat {
         let bounds = page.bounds(for: .mediaBox)
         guard bounds.height > 0 else { return 8.5 / 11 }
@@ -19,7 +23,7 @@ struct PageSplitPreview: View {
                 Text("Page \(pageNumber)")
                     .font(.headline)
                 Spacer()
-                Text("Top: \(percent(splitRatioFromTop)) · Bottom: \(percent(1 - splitRatioFromTop))")
+                Text("Top: \(percent(displayRatio)) · Bottom: \(percent(1 - displayRatio))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -29,14 +33,14 @@ struct PageSplitPreview: View {
                 let layout = pageLayout(in: geometry.size)
 
                 ZStack(alignment: .topLeading) {
-                    pageImage(size: layout.contentSize)
+                    CachedPageThumbnail(page: page, size: layout.contentSize)
                         .frame(width: layout.contentSize.width, height: layout.contentSize.height)
                         .position(
                             x: layout.origin.x + layout.contentSize.width / 2,
                             y: layout.origin.y + layout.contentSize.height / 2
                         )
 
-                    splitOverlay(layout: layout)
+                    splitOverlay(layout: layout, ratio: displayRatio)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -74,8 +78,8 @@ struct PageSplitPreview: View {
     }
 
     @ViewBuilder
-    private func splitOverlay(layout: PageLayout) -> some View {
-        let lineY = layout.origin.y + layout.contentSize.height * splitRatioFromTop
+    private func splitOverlay(layout: PageLayout, ratio: CGFloat) -> some View {
+        let lineY = layout.origin.y + layout.contentSize.height * ratio
         let lineCenterX = layout.origin.x + layout.contentSize.width / 2
         let handleX = layout.origin.x + 8
 
@@ -97,6 +101,7 @@ struct PageSplitPreview: View {
                 .position(x: handleX, y: lineY)
         }
         .allowsHitTesting(false)
+        .animation(nil, value: ratio)
     }
 
     private func splitDragGesture(layout: PageLayout) -> some Gesture {
@@ -104,20 +109,47 @@ struct PageSplitPreview: View {
             .onChanged { value in
                 let localY = value.location.y - layout.origin.y
                 let ratio = localY / layout.contentSize.height
-                splitRatioFromTop = min(0.9, max(0.1, ratio))
+                dragRatio = min(0.9, max(0.1, ratio))
             }
-    }
-
-    private func pageImage(size: CGSize) -> some View {
-        let thumbnail = page.thumbnail(of: size, for: .mediaBox)
-        return Image(nsImage: thumbnail)
-            .resizable()
-            .interpolation(.high)
-            .antialiased(true)
+            .onEnded { _ in
+                if let dragRatio {
+                    splitRatioFromTop = dragRatio
+                }
+                dragRatio = nil
+            }
     }
 
     private func percent(_ value: CGFloat) -> String {
         "\(Int((value * 100).rounded()))%"
+    }
+}
+
+/// Renders the page once per display size; split-line drags must not re-rasterize the PDF.
+private struct CachedPageThumbnail: View {
+    let page: PDFPage
+    let size: CGSize
+
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .antialiased(true)
+            } else {
+                Color(nsColor: .windowBackgroundColor)
+            }
+        }
+        .task(id: renderKey) {
+            guard size.width > 1, size.height > 1 else { return }
+            image = page.thumbnail(of: size, for: .mediaBox)
+        }
+    }
+
+    private var renderKey: String {
+        "\(Int(size.width.rounded()))x\(Int(size.height.rounded()))"
     }
 }
 
