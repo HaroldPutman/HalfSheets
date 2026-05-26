@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 
 @main
 struct HalfSheetsApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -27,6 +29,10 @@ struct ContentView: View {
             detail
         }
         .navigationTitle(model.sourceURL?.lastPathComponent ?? "HalfSheets")
+        .splitKeyboardMonitor(model: model)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         .alert("Export Failed", isPresented: exportErrorBinding) {
             Button("OK", role: .cancel) { exportError = nil }
         } message: {
@@ -53,6 +59,11 @@ struct ContentView: View {
             if model.hasDocument {
                 Text("\(model.pageCount) page\(model.pageCount == 1 ? "" : "s")")
                     .foregroundStyle(.secondary)
+
+                Text("Click a page, then ↑↓ to nudge the split (⇧ for larger steps).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
@@ -84,6 +95,8 @@ struct ContentView: View {
                             PageSplitPreview(
                                 page: page,
                                 pageNumber: index + 1,
+                                isFocused: model.focusedPageIndex == index,
+                                onSelect: { model.focusPage(index) },
                                 splitRatioFromTop: splitBinding(for: index)
                             )
                             .padding(.horizontal)

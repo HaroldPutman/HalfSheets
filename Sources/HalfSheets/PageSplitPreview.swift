@@ -5,6 +5,8 @@ import SwiftUI
 struct PageSplitPreview: View {
     let page: PDFPage
     let pageNumber: Int
+    let isFocused: Bool
+    let onSelect: () -> Void
     @Binding var splitRatioFromTop: CGFloat
 
     @State private var dragRatio: CGFloat?
@@ -52,7 +54,13 @@ struct PageSplitPreview: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.secondary.opacity(0.35))
+                    .strokeBorder(
+                        isFocused ? Color.accentColor.opacity(0.8) : Color.secondary.opacity(0.35),
+                        lineWidth: isFocused ? 2 : 1
+                    )
+            }
+            .onTapGesture {
+                onSelect()
             }
         }
     }
@@ -81,7 +89,8 @@ struct PageSplitPreview: View {
     private func splitOverlay(layout: PageLayout, ratio: CGFloat) -> some View {
         let lineY = layout.origin.y + layout.contentSize.height * ratio
         let lineCenterX = layout.origin.x + layout.contentSize.width / 2
-        let handleX = layout.origin.x + 8
+        let leftHandleX = layout.origin.x + 8
+        let rightHandleX = layout.origin.x + layout.contentSize.width - 8
 
         ZStack {
             Rectangle()
@@ -89,24 +98,32 @@ struct PageSplitPreview: View {
                 .frame(width: layout.contentSize.width, height: 1)
                 .position(x: lineCenterX, y: lineY)
 
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.red)
-                .frame(width: 12, height: 24)
-                .overlay {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
-                .position(x: handleX, y: lineY)
+            splitHandle
+                .position(x: leftHandleX, y: lineY)
+
+            splitHandle
+                .position(x: rightHandleX, y: lineY)
         }
         .allowsHitTesting(false)
         .animation(nil, value: ratio)
     }
 
+    private var splitHandle: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.red)
+            .frame(width: 12, height: 24)
+            .overlay {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+    }
+
     private func splitDragGesture(layout: PageLayout) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                onSelect()
                 let localY = value.location.y - layout.origin.y
                 let ratio = localY / layout.contentSize.height
                 dragRatio = min(0.9, max(0.1, ratio))
