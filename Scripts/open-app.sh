@@ -16,9 +16,17 @@ fi
 
 APP_DIR=".build/HalfSheets.app"
 MACOS="$APP_DIR/Contents/MacOS"
+RESOURCES="$APP_DIR/Contents/Resources"
+ICON="$ROOT/Resources/AppIcon.icns"
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS"
+mkdir -p "$MACOS" "$RESOURCES"
 cp "$BINARY" "$MACOS/HalfSheets"
+
+if [[ -f "$ICON" ]]; then
+  cp "$ICON" "$RESOURCES/AppIcon.icns"
+else
+  echo "Warning: $ICON not found; run Scripts/build-icon.sh" >&2
+fi
 
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -35,6 +43,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>HalfSheets</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
