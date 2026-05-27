@@ -60,7 +60,7 @@ struct ContentView: View {
                 Text("\(model.pageCount) page\(model.pageCount == 1 ? "" : "s")")
                     .foregroundStyle(.secondary)
 
-                Text("Click a page, then ↑↓ to nudge the split (⇧ for larger steps).")
+                Text("Drag blue lines to crop, red line to split. ↑↓ nudges split (⇧ = larger).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -97,7 +97,7 @@ struct ContentView: View {
                                 pageNumber: index + 1,
                                 isFocused: model.focusedPageIndex == index,
                                 onSelect: { model.focusPage(index) },
-                                splitRatioFromTop: splitBinding(for: index)
+                                pageSettings: settingsBinding(for: index)
                             )
                             .padding(.horizontal)
                         }
@@ -148,10 +148,10 @@ struct ContentView: View {
         .onDrop(of: [.pdf, .fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
     }
 
-    private func splitBinding(for index: Int) -> Binding<CGFloat> {
+    private func settingsBinding(for index: Int) -> Binding<PageSettings> {
         Binding(
-            get: { model.splitRatio(forPage: index) },
-            set: { model.setSplitRatio($0, forPage: index) }
+            get: { model.settings(forPage: index) },
+            set: { model.setSettings($0, forPage: index) }
         )
     }
 
@@ -202,7 +202,7 @@ struct ContentView: View {
         guard let document = model.pdfDocument else { return }
         guard let output = PDFExporter.export(
             document: document,
-            splitRatiosFromTop: model.splitRatios
+            pageSettings: model.pageSettings
         ) else {
             exportError = "Could not build the output PDF."
             return

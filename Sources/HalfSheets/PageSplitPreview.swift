@@ -7,11 +7,12 @@ struct PageSplitPreview: View {
     let pageNumber: Int
     let isFocused: Bool
     let onSelect: () -> Void
-    @Binding var splitRatioFromTop: CGFloat
+    @Binding var pageSettings: PageSettings
 
-    @State private var dragRatio: CGFloat?
+    @State private var liveSettings: PageSettings?
+    @State private var activeDrag: ActiveDrag?
 
-    private var displayRatio: CGFloat { dragRatio ?? splitRatioFromTop }
+    private var display: PageSettings { liveSettings ?? pageSettings }
 
     private var pageAspect: CGFloat {
         let bounds = page.bounds(for: .mediaBox)
@@ -25,7 +26,7 @@ struct PageSplitPreview: View {
                 Text("Page \(pageNumber)")
                     .font(.headline)
                 Spacer()
-                Text("Top: \(percent(displayRatio)) · Bottom: \(percent(1 - displayRatio))")
+                Text(halfSizeLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -35,23 +36,20 @@ struct PageSplitPreview: View {
                 let layout = pageLayout(in: geometry.size)
 
                 ZStack(alignment: .topLeading) {
-                    CachedPageThumbnail(page: page, size: layout.contentSize)
+                    pageCanvas(layout: layout, settings: display)
+                    Color.clear
                         .frame(width: layout.contentSize.width, height: layout.contentSize.height)
+                        .contentShape(Rectangle())
+                        .gesture(pageDragGesture(layout: layout))
                         .position(
                             x: layout.origin.x + layout.contentSize.width / 2,
                             y: layout.origin.y + layout.contentSize.height / 2
                         )
-
-                    splitOverlay(layout: layout, ratio: displayRatio)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(splitDragGesture(layout: layout))
             }
             .aspectRatio(pageAspect, contentMode: .fit)
             .frame(maxWidth: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(
@@ -63,6 +61,18 @@ struct PageSplitPreview: View {
                 onSelect()
             }
         }
+    }
+
+    private var halfSizeLabel: String {
+        let top = PageLayoutMath.topHalfFraction(
+            topCrop: display.topCrop,
+            split: display.splitFromTop
+        )
+        let bottom = PageLayoutMath.bottomHalfFraction(
+            bottomCrop: display.bottomCrop,
+            split: display.splitFromTop
+        )
+        return "Top: \(percent(top)) · Bottom: \(percent(bottom))"
     }
 
     private func pageLayout(in containerSize: CGSize) -> PageLayout {
@@ -86,26 +96,98 @@ struct PageSplitPreview: View {
     }
 
     @ViewBuilder
-    private func splitOverlay(layout: PageLayout, ratio: CGFloat) -> some View {
-        let lineY = layout.origin.y + layout.contentSize.height * ratio
-        let lineCenterX = layout.origin.x + layout.contentSize.width / 2
-        let leftHandleX = layout.origin.x + 8
-        let rightHandleX = layout.origin.x + layout.contentSize.width - 8
+    private func pageCanvas(layout: PageLayout, settings: PageSettings) -> some View {
+        let width = layout.contentSize.width
+        let height = layout.contentSize.height
+        let center = CGPoint(
+            x: layout.origin.x + width / 2,
+            y: layout.origin.y + height / 2
+        )
 
         ZStack {
-            Rectangle()
-                .fill(Color.red)
-                .frame(width: layout.contentSize.width, height: 1)
-                .position(x: lineCenterX, y: lineY)
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .windowBackgroundColor))
 
-            splitHandle
-                .position(x: leftHandleX, y: lineY)
+            CachedPageThumbnail(page: page, size: layout.contentSize)
+                .frame(width: width, height: height)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            splitHandle
-                .position(x: rightHandleX, y: lineY)
+            cropShadeOverlay(layout: layout, settings: settings)
+            lineOverlay(layout: layout, settings: settings)
+        }
+        .frame(width: width, height: height)
+        .position(x: center.x, y: center.y)
+    }
+
+    @ViewBuilder
+    private func cropShadeOverlay(layout: PageLayout, settings: PageSettings) -> some View {
+        let width = layout.contentSize.width
+        let height = layout.contentSize.height
+
+        if settings.topCrop > 0.001 {
+            let topHeight = height * settings.topCrop
+            CropShadePattern()
+                .frame(width: width, height: topHeight)
+                .position(x: width / 2, y: topHeight / 2)
+        }
+
+        if settings.bottomCrop > 0.001 {
+            let bottomHeight = height * settings.bottomCrop
+            CropShadePattern()
+                .frame(width: width, height: bottomHeight)
+                .position(x: width / 2, y: height - bottomHeight / 2)
+        }
+    }
+
+    @ViewBuilder
+    private func lineOverlay(layout: PageLayout, settings: PageSettings) -> some View {
+        let width = layout.contentSize.width
+        let height = layout.contentSize.height
+        let topCropY = max(2, height * settings.topCrop)
+        let splitY = height * settings.splitFromTop
+        let bottomCropY = min(height - 2, height * (1 - settings.bottomCrop))
+
+        ZStack {
+            cropLine(width: width, y: topCropY)
+            cropHandle.position(x: 8, y: topCropY)
+            cropHandle.position(x: width - 8, y: topCropY)
+
+            splitLine(width: width, y: splitY)
+            splitHandle.position(x: 8, y: splitY)
+            splitHandle.position(x: width - 8, y: splitY)
+
+            cropLine(width: width, y: bottomCropY)
+            cropHandle.position(x: 8, y: bottomCropY)
+            cropHandle.position(x: width - 8, y: bottomCropY)
         }
         .allowsHitTesting(false)
-        .animation(nil, value: ratio)
+        .animation(nil, value: settings)
+    }
+
+    private func cropLine(width: CGFloat, y: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.blue)
+            .frame(width: width, height: 3)
+            .position(x: width / 2, y: y)
+    }
+
+    private func splitLine(width: CGFloat, y: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.red)
+            .frame(width: width, height: 2)
+            .position(x: width / 2, y: y)
+    }
+
+    private var cropHandle: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.blue)
+            .frame(width: 12, height: 24)
+            .overlay {
+                Image(systemName: "arrow.up.and.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
     }
 
     private var splitHandle: some View {
@@ -120,20 +202,63 @@ struct PageSplitPreview: View {
             .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
     }
 
-    private func splitDragGesture(layout: PageLayout) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+    private func pageDragGesture(layout: PageLayout) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
                 onSelect()
-                let localY = value.location.y - layout.origin.y
-                let ratio = localY / layout.contentSize.height
-                dragRatio = min(0.9, max(0.1, ratio))
+                var settings = liveSettings ?? pageSettings
+                let height = layout.contentSize.height
+                let fraction = min(1, max(0, value.location.y / height))
+
+                if activeDrag == nil {
+                    activeDrag = pickDragTarget(fraction: fraction, settings: settings)
+                }
+
+                switch activeDrag {
+                case .topCrop:
+                    settings.topCrop = PageLayoutMath.clampTopCrop(
+                        fraction,
+                        split: settings.splitFromTop,
+                        bottomCrop: settings.bottomCrop
+                    )
+                case .split:
+                    settings.splitFromTop = PageLayoutMath.clampSplit(
+                        fraction,
+                        topCrop: settings.topCrop,
+                        bottomCrop: settings.bottomCrop
+                    )
+                case .bottomCrop:
+                    settings.bottomCrop = PageLayoutMath.clampBottomCrop(
+                        1 - fraction,
+                        split: settings.splitFromTop,
+                        topCrop: settings.topCrop
+                    )
+                case nil:
+                    break
+                }
+
+                liveSettings = PageLayoutMath.normalized(settings)
             }
             .onEnded { _ in
-                if let dragRatio {
-                    splitRatioFromTop = dragRatio
+                if let liveSettings {
+                    pageSettings = liveSettings
                 }
-                dragRatio = nil
+                self.liveSettings = nil
+                activeDrag = nil
             }
+    }
+
+    private func pickDragTarget(fraction: CGFloat, settings: PageSettings) -> ActiveDrag {
+        let edgeZone: CGFloat = 0.14
+        if fraction < edgeZone { return .topCrop }
+        if fraction > 1 - edgeZone { return .bottomCrop }
+
+        let candidates: [(ActiveDrag, CGFloat)] = [
+            (.topCrop, abs(fraction - settings.topCrop)),
+            (.split, abs(fraction - settings.splitFromTop)),
+            (.bottomCrop, abs(fraction - (1 - settings.bottomCrop))),
+        ]
+        return candidates.min(by: { $0.1 < $1.1 })?.0 ?? .split
     }
 
     private func percent(_ value: CGFloat) -> String {
@@ -141,7 +266,35 @@ struct PageSplitPreview: View {
     }
 }
 
-/// Renders the page once per display size; split-line drags must not re-rasterize the PDF.
+private enum ActiveDrag {
+    case topCrop
+    case split
+    case bottomCrop
+}
+
+/// Diagonal crosshatch over a semi-transparent fill for cropped-away regions.
+private struct CropShadePattern: View {
+    var body: some View {
+        Canvas { context, size in
+            let spacing: CGFloat = 10
+            var path = Path()
+            var x: CGFloat = -size.height
+            while x < size.width + size.height {
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x + size.height, y: size.height))
+                x += spacing
+            }
+            context.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .color(Color(nsColor: .systemGray).opacity(0.45))
+            )
+            context.stroke(path, with: .color(.white.opacity(0.35)), lineWidth: 1)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Renders the page once per display size; drags must not re-rasterize the PDF.
 private struct CachedPageThumbnail: View {
     let page: PDFPage
     let size: CGSize

@@ -5,7 +5,7 @@ import SwiftUI
 final class DocumentModel: ObservableObject {
     @Published var pdfDocument: PDFDocument?
     @Published var sourceURL: URL?
-    @Published var splitRatios: [CGFloat] = []
+    @Published var pageSettings: [PageSettings] = []
     @Published var focusedPageIndex: Int = 0
     @Published var loadError: String?
 
@@ -32,26 +32,28 @@ final class DocumentModel: ObservableObject {
 
         pdfDocument = document
         sourceURL = url
-        splitRatios = Array(repeating: 0.5, count: document.pageCount)
+        pageSettings = Array(repeating: PageSettings(), count: document.pageCount)
         focusedPageIndex = 0
     }
 
     func clear() {
         pdfDocument = nil
         sourceURL = nil
-        splitRatios = []
+        pageSettings = []
         focusedPageIndex = 0
         loadError = nil
     }
 
     func focusPage(_ index: Int) {
-        guard index >= 0, index < splitRatios.count else { return }
+        guard index >= 0, index < pageSettings.count else { return }
         focusedPageIndex = index
     }
 
     func nudgeFocusedPage(by delta: CGFloat) {
-        guard focusedPageIndex >= 0, focusedPageIndex < splitRatios.count else { return }
-        setSplitRatio(splitRatios[focusedPageIndex] + delta, forPage: focusedPageIndex)
+        guard focusedPageIndex >= 0, focusedPageIndex < pageSettings.count else { return }
+        var settings = pageSettings[focusedPageIndex]
+        settings.splitFromTop += delta
+        pageSettings[focusedPageIndex] = PageLayoutMath.normalized(settings)
     }
 
     func nudgeFocusedPageUp(coarse: Bool = false) {
@@ -68,13 +70,23 @@ final class DocumentModel: ObservableObject {
         pdfDocument?.page(at: index)
     }
 
+    func settings(forPage index: Int) -> PageSettings {
+        guard index >= 0, index < pageSettings.count else { return PageSettings() }
+        return pageSettings[index]
+    }
+
+    func setSettings(_ settings: PageSettings, forPage index: Int) {
+        guard index >= 0, index < pageSettings.count else { return }
+        pageSettings[index] = PageLayoutMath.normalized(settings)
+    }
+
     func splitRatio(forPage index: Int) -> CGFloat {
-        guard index >= 0, index < splitRatios.count else { return 0.5 }
-        return splitRatios[index]
+        settings(forPage: index).splitFromTop
     }
 
     func setSplitRatio(_ ratio: CGFloat, forPage index: Int) {
-        guard index >= 0, index < splitRatios.count else { return }
-        splitRatios[index] = min(0.9, max(0.1, ratio))
+        var settings = settings(forPage: index)
+        settings.splitFromTop = ratio
+        setSettings(settings, forPage: index)
     }
 }

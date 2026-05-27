@@ -3,33 +3,38 @@ import Foundation
 import PDFKit
 
 enum PDFExporter {
-    /// `splitRatioFromTop` is the fraction of page height above the split line (top half sheet).
     static func export(
         document: PDFDocument,
-        splitRatiosFromTop: [CGFloat]
+        pageSettings: [PageSettings]
     ) -> PDFDocument? {
         let output = PDFDocument()
 
         for index in 0..<document.pageCount {
             guard let page = document.page(at: index) else { continue }
-            let ratio = index < splitRatiosFromTop.count
-                ? splitRatiosFromTop[index]
-                : 0.5
+            let settings = index < pageSettings.count
+                ? PageLayoutMath.normalized(pageSettings[index])
+                : PageSettings()
 
             let mediaBox = page.bounds(for: .mediaBox)
-            let splitY = mediaBox.minY + mediaBox.height * (1 - ratio)
+            let height = mediaBox.height
+            let maxY = mediaBox.maxY
+            let minY = mediaBox.minY
+
+            let topCropY = maxY - height * settings.topCrop
+            let splitY = maxY - height * settings.splitFromTop
+            let bottomCropY = minY + height * settings.bottomCrop
 
             let topRect = CGRect(
                 x: mediaBox.minX,
                 y: splitY,
                 width: mediaBox.width,
-                height: mediaBox.maxY - splitY
+                height: topCropY - splitY
             )
             let bottomRect = CGRect(
                 x: mediaBox.minX,
-                y: mediaBox.minY,
+                y: bottomCropY,
                 width: mediaBox.width,
-                height: splitY - mediaBox.minY
+                height: splitY - bottomCropY
             )
 
             if let topPage = croppedPage(from: page, cropRect: topRect) {
