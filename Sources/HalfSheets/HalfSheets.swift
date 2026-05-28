@@ -60,10 +60,15 @@ struct ContentView: View {
                 Text("\(model.pageCount) page\(model.pageCount == 1 ? "" : "s")")
                     .foregroundStyle(.secondary)
 
-                Text("Drag blue lines to crop, red line to split. ↑↓ nudges split (⇧ = larger).")
+                Text("Drag blue to crop, red to split. Drag red to an edge or turn off split below.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Toggle(isOn: splitToggleBinding) {
+                    Text("Split page \(model.focusedPageIndex + 1)")
+                }
+                .toggleStyle(.switch)
             }
 
             Spacer()
@@ -152,6 +157,17 @@ struct ContentView: View {
         Binding(
             get: { model.settings(forPage: index) },
             set: { model.setSettings($0, forPage: index) }
+        )
+    }
+
+    private var splitToggleBinding: Binding<Bool> {
+        Binding(
+            get: { model.settings(forPage: model.focusedPageIndex).isSplit },
+            set: { isSplit in
+                var settings = model.settings(forPage: model.focusedPageIndex)
+                settings.isSplit = isSplit
+                model.setSettings(settings, forPage: model.focusedPageIndex)
+            }
         )
     }
 

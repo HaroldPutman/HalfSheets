@@ -52,6 +52,7 @@ final class DocumentModel: ObservableObject {
     func nudgeFocusedPage(by delta: CGFloat) {
         guard focusedPageIndex >= 0, focusedPageIndex < pageSettings.count else { return }
         var settings = pageSettings[focusedPageIndex]
+        settings.isSplit = true
         settings.splitFromTop += delta
         pageSettings[focusedPageIndex] = PageLayoutMath.normalized(settings)
     }

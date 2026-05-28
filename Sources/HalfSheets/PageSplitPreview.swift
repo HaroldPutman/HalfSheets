@@ -23,8 +23,18 @@ struct PageSplitPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Page \(pageNumber)")
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    Text("Page \(pageNumber)")
+                        .font(.headline)
+                    if !display.isSplit {
+                        Text("Uncut")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.85), in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                }
                 Spacer()
                 Text(halfSizeLabel)
                     .font(.caption)
@@ -64,6 +74,13 @@ struct PageSplitPreview: View {
     }
 
     private var halfSizeLabel: String {
+        if !display.isSplit {
+            let kept = PageLayoutMath.uncutKeptFraction(
+                topCrop: display.topCrop,
+                bottomCrop: display.bottomCrop
+            )
+            return "Full page: \(percent(kept))"
+        }
         let top = PageLayoutMath.topHalfFraction(
             topCrop: display.topCrop,
             split: display.splitFromTop
@@ -152,9 +169,11 @@ struct PageSplitPreview: View {
             cropHandle.position(x: 8, y: topCropY)
             cropHandle.position(x: width - 8, y: topCropY)
 
-            splitLine(width: width, y: splitY)
-            splitHandle.position(x: 8, y: splitY)
-            splitHandle.position(x: width - 8, y: splitY)
+            if settings.isSplit {
+                splitLine(width: width, y: splitY)
+                splitHandle.position(x: 8, y: splitY)
+                splitHandle.position(x: width - 8, y: splitY)
+            }
 
             cropLine(width: width, y: bottomCropY)
             cropHandle.position(x: 8, y: bottomCropY)
@@ -222,6 +241,7 @@ struct PageSplitPreview: View {
                         bottomCrop: settings.bottomCrop
                     )
                 case .split:
+                    settings.isSplit = true
                     settings.splitFromTop = PageLayoutMath.clampSplit(
                         fraction,
                         topCrop: settings.topCrop,
@@ -240,10 +260,19 @@ struct PageSplitPreview: View {
                 liveSettings = PageLayoutMath.normalized(settings)
             }
             .onEnded { _ in
-                if let liveSettings {
-                    pageSettings = liveSettings
+                var committed = liveSettings ?? pageSettings
+                if committed.isSplit,
+                   activeDrag == .split,
+                   PageLayoutMath.shouldSnapToUncut(
+                       split: committed.splitFromTop,
+                       topCrop: committed.topCrop,
+                       bottomCrop: committed.bottomCrop
+                   ) {
+                    committed.isSplit = false
+                    committed = PageLayoutMath.normalized(committed)
                 }
-                self.liveSettings = nil
+                pageSettings = committed
+                liveSettings = nil
                 activeDrag = nil
             }
     }
@@ -252,6 +281,7 @@ struct PageSplitPreview: View {
         let edgeZone: CGFloat = 0.14
         if fraction < edgeZone { return .topCrop }
         if fraction > 1 - edgeZone { return .bottomCrop }
+        if !settings.isSplit { return .split }
 
         let candidates: [(ActiveDrag, CGFloat)] = [
             (.topCrop, abs(fraction - settings.topCrop)),

@@ -24,6 +24,19 @@ enum PDFExporter {
             let splitY = maxY - height * settings.splitFromTop
             let bottomCropY = minY + height * settings.bottomCrop
 
+            if !settings.isSplit {
+                let fullRect = CGRect(
+                    x: mediaBox.minX,
+                    y: bottomCropY,
+                    width: mediaBox.width,
+                    height: topCropY - bottomCropY
+                )
+                if let keptPage = croppedPage(from: page, cropRect: fullRect) {
+                    output.insert(keptPage, at: output.pageCount)
+                }
+                continue
+            }
+
             let topRect = CGRect(
                 x: mediaBox.minX,
                 y: splitY,
