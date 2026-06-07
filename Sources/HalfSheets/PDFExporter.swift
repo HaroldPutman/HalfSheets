@@ -15,45 +15,21 @@ enum PDFExporter {
                 ? PageLayoutMath.normalized(pageSettings[index])
                 : PageSettings()
 
-            let mediaBox = page.bounds(for: .mediaBox)
-            let height = mediaBox.height
-            let maxY = mediaBox.maxY
-            let minY = mediaBox.minY
-
-            let topCropY = maxY - height * settings.topCrop
-            let splitY = maxY - height * settings.splitFromTop
-            let bottomCropY = minY + height * settings.bottomCrop
+            let topEnd = settings.topCrop
+            let split = settings.splitFromTop
+            let bottomStart = 1 - settings.bottomCrop
 
             if !settings.isSplit {
-                let fullRect = CGRect(
-                    x: mediaBox.minX,
-                    y: bottomCropY,
-                    width: mediaBox.width,
-                    height: topCropY - bottomCropY
-                )
-                if let keptPage = croppedPage(from: page, cropRect: fullRect) {
+                if let keptPage = croppedPage(from: page, fromTop: topEnd, toTop: bottomStart) {
                     output.insert(keptPage, at: output.pageCount)
                 }
                 continue
             }
 
-            let topRect = CGRect(
-                x: mediaBox.minX,
-                y: splitY,
-                width: mediaBox.width,
-                height: topCropY - splitY
-            )
-            let bottomRect = CGRect(
-                x: mediaBox.minX,
-                y: bottomCropY,
-                width: mediaBox.width,
-                height: splitY - bottomCropY
-            )
-
-            if let topPage = croppedPage(from: page, cropRect: topRect) {
+            if let topPage = croppedPage(from: page, fromTop: topEnd, toTop: split) {
                 output.insert(topPage, at: output.pageCount)
             }
-            if let bottomPage = croppedPage(from: page, cropRect: bottomRect) {
+            if let bottomPage = croppedPage(from: page, fromTop: split, toTop: bottomStart) {
                 output.insert(bottomPage, at: output.pageCount)
             }
         }
@@ -61,18 +37,19 @@ enum PDFExporter {
         return output.pageCount > 0 ? output : nil
     }
 
-    private static func croppedPage(from page: PDFPage, cropRect: CGRect) -> PDFPage? {
-        guard cropRect.width > 1, cropRect.height > 1,
-              let cgPage = page.pageRef
-        else { return nil }
+    /// Renders an upright crop of the visually displayed page into a new PDF page.
+    private static func croppedPage(from page: PDFPage, fromTop: CGFloat, toTop: CGFloat) -> PDFPage? {
+        guard let cgPage = page.pageRef else { return nil }
+
+        let display = PageGeometry.displaySize(for: page)
+        let from = min(fromTop, toTop)
+        let to = max(fromTop, toTop)
+        let cropWidth = display.width
+        let cropHeight = (to - from) * display.height
+        guard cropWidth > 1, cropHeight > 1 else { return nil }
 
         let data = NSMutableData()
-        var mediaBox = CGRect(
-            x: 0,
-            y: 0,
-            width: cropRect.width,
-            height: cropRect.height
-        )
+        var mediaBox = CGRect(x: 0, y: 0, width: cropWidth, height: cropHeight)
 
         guard let consumer = CGDataConsumer(data: data as CFMutableData),
               let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
@@ -80,8 +57,11 @@ enum PDFExporter {
 
         context.beginPDFPage(nil)
         context.saveGState()
-        context.translateBy(x: -cropRect.origin.x, y: -cropRect.origin.y)
-        context.clip(to: cropRect)
+        context.translateBy(
+            x: 0,
+            y: PageGeometry.verticalCropOffset(for: page, fromTop: from, toTop: to)
+        )
+        context.concatenate(page.transform(for: .mediaBox))
         context.drawPDFPage(cgPage)
         context.restoreGState()
         context.endPDFPage()

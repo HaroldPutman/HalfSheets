@@ -15,9 +15,7 @@ struct PageSplitPreview: View {
     private var display: PageSettings { liveSettings ?? pageSettings }
 
     private var pageAspect: CGFloat {
-        let bounds = page.bounds(for: .mediaBox)
-        guard bounds.height > 0 else { return 8.5 / 11 }
-        return bounds.width / bounds.height
+        PageGeometry.displayAspect(for: page)
     }
 
     var body: some View {
