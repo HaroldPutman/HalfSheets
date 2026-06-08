@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         activateAsForegroundApp()
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             for window in sender.windows where !window.isVisible {
