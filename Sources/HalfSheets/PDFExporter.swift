@@ -42,8 +42,9 @@ enum PDFExporter {
         guard let cgPage = page.pageRef else { return nil }
 
         let display = PageGeometry.displaySize(for: page)
-        let from = min(fromTop, toTop)
-        let to = max(fromTop, toTop)
+        let cropRange = PageGeometry.displayCropRange(for: page, fromTop: fromTop, toTop: toTop)
+        let from = cropRange.from
+        let to = cropRange.to
         let cropWidth = display.width
         let cropHeight = (to - from) * display.height
         guard cropWidth > 1, cropHeight > 1 else { return nil }
@@ -59,7 +60,7 @@ enum PDFExporter {
         context.saveGState()
         context.translateBy(
             x: 0,
-            y: PageGeometry.verticalCropOffset(for: page, fromTop: from, toTop: to)
+            y: PageGeometry.verticalCropOffset(for: page, from: from, to: to)
         )
         context.concatenate(page.transform(for: .mediaBox))
         context.drawPDFPage(cgPage)
